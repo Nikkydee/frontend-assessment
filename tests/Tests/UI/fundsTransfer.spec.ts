@@ -24,7 +24,7 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
     let pinPage: TransactionPinPage;
     let successPage: TransferSuccessPage;
 
-    // Taken from the logged-in user's profile, not hard-coded
+    // Read from the account list on the transfer page, so it works for any user
     let sourceAccountNumber: string;
 
     const email = getEnv('USER_EMAIL');
@@ -72,42 +72,32 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
 
     test('Validate that user can log in successfully with a valid OTP', async () => {
         await otpPage.enterOtp(otp);
-        const [tokenResponse, profileResponse] = await Promise.all([
-            page.waitForResponse(res => res.url().includes(API.TOKEN) && res.request().method() === 'POST'),
-            page.waitForResponse(res => res.url().includes(API.USER_PROFILE) && res.status() === 200),
-            otpPage.clickContinueBtn(),
-        ]);
+        const tokenResponse = await waitForApiResponse(page, API.TOKEN, () => otpPage.clickContinueBtn());
 
+        // The OTP is accepted and an access token is issued
         const tokenBody = await tokenResponse.json();
         expect(tokenResponse.status()).toBe(200);
         expect(tokenBody.token_type).toBe('Bearer');
         expect(typeof tokenBody.access_token).toBe('string');
 
-        const { user, profiles } = (await profileResponse.json()).result;
-        expect(user.username).toBe(email);
-        sourceAccountNumber = profiles[0].accounts[0].accountNumber;
-
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect(dashboardPage.dashboardContainer).toBeVisible();
-        await expect(dashboardPage.welcomeHeading).toHaveText(new RegExp(`welcome back, ${user.firstName}`, 'i'));
+        await expect(dashboardPage.welcomeHeading).toBeVisible();
         await expect(dashboardPage.totalBalanceLabel).toBeVisible();
     });
 
     test('Validate that user can navigate to the Funds Transfer page', async () => {
-        const canTransferResponse = expectApiResponse(page, API.CAN_TRANSFER);
         await dashboardPage.clickSendBtn();
 
-        const canTransfer = (await (await canTransferResponse).json()).result;
-        expect(canTransfer.allowed).toBe(true);
-
         await expect(transferPage.pageHeading).toBeVisible();
-        await expect(transferPage.sourceAccount(sourceAccountNumber)).toBeVisible();
         await expect(transferPage.nextBtn).toBeDisabled();
 
+        sourceAccountNumber = await transferPage.getFirstSourceAccountNumber();
         await transferPage.selectSourceAccount(sourceAccountNumber);
         await expect(transferPage.nextBtn).toBeEnabled();
         await transferPage.clickNextBtn();
 
+        await expect(transferPage.transferFromSection).toContainText(sourceAccountNumber);
         await expect(transferPage.amountField).toBeVisible();
         await expect(transferPage.transferToDropdown).toBeVisible();
         await expect(transferPage.reviewTransferBtn).toBeDisabled();

@@ -8,6 +8,8 @@ export class TransferPage extends PageBase {
     readonly pageHeading: Locator;
     readonly selectBalanceSection: Locator;
     readonly nextBtn: Locator;
+    readonly firstSourceAccount: Locator;
+    readonly transferFromSection: Locator;
     readonly amountField: Locator;
     readonly transferToDropdown: Locator;
     readonly newRecipientOption: Locator;
@@ -22,6 +24,8 @@ export class TransferPage extends PageBase {
         this.pageHeading = page.getByRole('heading', { name: 'Send money easily' });
         this.selectBalanceSection = page.getByText('Select Balance').locator('..');
         this.nextBtn = page.getByRole('button', { name: 'Next' });
+        this.firstSourceAccount = this.selectBalanceSection.getByText(/^\d{10}$/).first();
+        this.transferFromSection = page.getByText('Transfer From', { exact: true }).locator('..');
         this.amountField = page.getByPlaceholder('0.00');
         this.transferToDropdown = page.getByText('Send to a...');
         this.newRecipientOption = page.getByText('Send to a new recipient');
@@ -42,6 +46,11 @@ export class TransferPage extends PageBase {
 
     resolvedAccountName(accountName: string): Locator {
         return this.accountNameLabel.locator('..').getByText(accountName, { exact: true });
+    }
+
+    async getFirstSourceAccountNumber(): Promise<string> {
+        await this.firstSourceAccount.waitFor({ state: 'visible' });
+        return (await this.firstSourceAccount.innerText()).trim();
     }
 
     async selectSourceAccount(accountNumber: string): Promise<void> {

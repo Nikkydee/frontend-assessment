@@ -2,7 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { LoginPage } from '../../PageObjects/LoginPage';
 import { OTPPage } from '../../PageObjects/OTPPage';
 import { DashboardPage } from '../../PageObjects/DashboardPage';
-import { waitForApiResponse, getEnv } from '../../../Utils/helperMethods';
+import { TransferPage } from '../../PageObjects/TransferPage';
+import { ReviewTransferPage } from '../../PageObjects/ReviewTransferPage';
+import { TransactionPinPage } from '../../PageObjects/TransactionPinPage';
+import { TransferSuccessPage } from '../../PageObjects/TransferSuccessPage';
+import { waitForApiResponse, expectApiResponse, formatAmount, getEnv } from '../../../Utils/helperMethods';
 import { API } from '../../../Utils/apiEndpoints';
 
 /**
@@ -15,16 +19,32 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
     let loginPage: LoginPage;
     let otpPage: OTPPage;
     let dashboardPage: DashboardPage;
+    let transferPage: TransferPage;
+    let reviewPage: ReviewTransferPage;
+    let pinPage: TransactionPinPage;
+    let successPage: TransferSuccessPage;
+
+    // Taken from the logged-in user's profile, not hard-coded
+    let sourceAccountNumber: string;
 
     const email = getEnv('USER_EMAIL');
     const password = getEnv('USER_PASSWORD');
     const otp = getEnv('OTP_CODE');
+    const pin = getEnv('TRANSACTION_PIN');
+    const bankName = getEnv('BENEFICIARY_BANK');
+    const beneficiaryAccount = getEnv('BENEFICIARY_ACCOUNT');
+    const amount = Number(getEnv('TRANSFER_AMOUNT'));
+    const narration = `Automation test ${Date.now()}`;
 
     test.beforeAll(async ({ browser }) => {
         page = await browser.newPage();
         loginPage = new LoginPage(page);
         otpPage = new OTPPage(page);
         dashboardPage = new DashboardPage(page);
+        transferPage = new TransferPage(page);
+        reviewPage = new ReviewTransferPage(page);
+        pinPage = new TransactionPinPage(page);
+        successPage = new TransferSuccessPage(page);
         await loginPage.open();
     });
 
@@ -63,12 +83,94 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
         expect(tokenBody.token_type).toBe('Bearer');
         expect(typeof tokenBody.access_token).toBe('string');
 
-        const { user } = (await profileResponse.json()).result;
+        const { user, profiles } = (await profileResponse.json()).result;
         expect(user.username).toBe(email);
+        sourceAccountNumber = profiles[0].accounts[0].accountNumber;
 
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect(dashboardPage.dashboardContainer).toBeVisible();
         await expect(dashboardPage.welcomeHeading).toHaveText(new RegExp(`welcome back, ${user.firstName}`, 'i'));
         await expect(dashboardPage.totalBalanceLabel).toBeVisible();
+    });
+
+    test('Validate that user can navigate to the Funds Transfer page', async () => {
+        const canTransferResponse = expectApiResponse(page, API.CAN_TRANSFER);
+        await dashboardPage.clickSendBtn();
+
+        const canTransfer = (await (await canTransferResponse).json()).result;
+        expect(canTransfer.allowed).toBe(true);
+
+        await expect(transferPage.pageHeading).toBeVisible();
+        await expect(transferPage.sourceAccount(sourceAccountNumber)).toBeVisible();
+        await expect(transferPage.nextBtn).toBeDisabled();
+
+        await transferPage.selectSourceAccount(sourceAccountNumber);
+        await expect(transferPage.nextBtn).toBeEnabled();
+        await transferPage.clickNextBtn();
+
+        await expect(transferPage.amountField).toBeVisible();
+        await expect(transferPage.transferToDropdown).toBeVisible();
+        await expect(transferPage.reviewTransferBtn).toBeDisabled();
+    });
+
+    test('Validate that user can transfer funds to a new recipient', async () => {
+        let recipientName = '';
+        let fee = 0;
+
+        await test.step('Enter amount and recipient details', async () => {
+            const nameEnquiryResponse = expectApiResponse(page, API.NAME_ENQUIRY);
+            const chargesResponse = expectApiResponse(page, API.TRANSFER_CHARGES);
+
+            await transferPage.enterAmount(String(amount));
+            await transferPage.chooseNewRecipient();
+            await transferPage.selectBank(bankName);
+            await transferPage.enterAccountNumber(beneficiaryAccount);
+
+            const enquiryResponse = await nameEnquiryResponse;
+            const enquiry = (await enquiryResponse.json()).result;
+            expect(enquiryResponse.status()).toBe(200);
+            expect(enquiry.accountNumber).toBe(beneficiaryAccount);
+            expect(enquiry.bankName).toBe(bankName);
+            recipientName = enquiry.accountName;
+
+            fee = (await (await chargesResponse).json()).result.charges;
+
+            await expect(transferPage.resolvedAccountName(recipientName)).toBeVisible();
+            await expect(transferPage.reviewTransferBtn).toBeEnabled();
+        });
+
+        await test.step('Review the transfer details', async () => {
+            await transferPage.clickReviewTransferBtn();
+
+            await expect(reviewPage.pageHeading).toBeVisible();
+            await expect(reviewPage.amountValue).toHaveText(`NGN ${formatAmount(amount)}`);
+            await expect(reviewPage.feesValue).toHaveText(`NGN ${formatAmount(fee)}`);
+            await expect(reviewPage.totalAmountValue).toHaveText(`NGN ${formatAmount(amount + fee)}`);
+            await expect(reviewPage.recipientNameValue).toHaveText(recipientName);
+            await expect(reviewPage.recipientBankValue).toHaveText(bankName);
+            await expect(reviewPage.recipientAccountValue).toHaveText(beneficiaryAccount);
+
+            await reviewPage.enterNarration(narration);
+            await reviewPage.clickSendMoneyBtn();
+        });
+
+        await test.step('Authorise with transaction PIN and confirm success', async () => {
+            await expect(pinPage.pageHeading).toBeVisible();
+            await expect(pinPage.pinInputs).toHaveCount(pin.length);
+            await pinPage.enterPin(pin);
+
+            const transferResponse = await waitForApiResponse(page, API.TRANSFER, () => pinPage.clickConfirmBtn());
+            const transfer = await transferResponse.json();
+            await test.info().attach('transfer-response', {
+                body: JSON.stringify(transfer, null, 2),
+                contentType: 'application/json',
+            });
+            expect(transferResponse.status()).toBe(200);
+            expect(transfer.successful).toBe(true);
+
+            await expect(successPage.pageHeading).toBeVisible();
+            await expect(successPage.summaryText).toContainText(`₦ ${formatAmount(amount + fee)}`);
+            await expect(successPage.summaryText).toContainText(recipientName);
+        });
     });
 });

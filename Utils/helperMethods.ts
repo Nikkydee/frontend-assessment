@@ -39,3 +39,16 @@ export const getEnv = (key: string): string => {
     }
     return value;
 };
+
+/**
+ * Starts waiting for an API response without triggering anything.
+ * Register it before the UI action that fires the request, then await it afterwards.
+ */
+export const expectApiResponse = (page: Page, path: string | RegExp, method: string = 'GET'): Promise<Response> =>
+    page.waitForResponse(res =>
+        res.request().method() === method &&
+        (typeof path === 'string' ? res.url().includes(path) : path.test(res.url())));
+
+/** Formats a number the way the app displays money, e.g. 1000 -> "1,000.00". */
+export const formatAmount = (amount: number): string =>
+    amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

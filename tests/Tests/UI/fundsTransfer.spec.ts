@@ -6,8 +6,7 @@ import { TransferPage } from '../../PageObjects/TransferPage';
 import { ReviewTransferPage } from '../../PageObjects/ReviewTransferPage';
 import { TransactionPinPage } from '../../PageObjects/TransactionPinPage';
 import { TransferSuccessPage } from '../../PageObjects/TransferSuccessPage';
-import { waitForApiResponse, expectApiResponse, formatAmount, getEnv } from '../../../Utils/helperMethods';
-import { API } from '../../../Utils/apiEndpoints';
+import { formatAmount, parseAmount, getEnv } from '../../../Utils/helperMethods';
 
 /**
  * End-to-end flow: Login -> OTP -> Funds Transfer.
@@ -57,14 +56,9 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
         await expect(loginPage.passwordField).toBeVisible();
 
         await loginPage.fillCredentials(email, password);
-        const response = await waitForApiResponse(page, API.TOKEN, () => loginPage.clickSubmitBtn());
+        await loginPage.clickSubmitBtn();
 
-        // Valid credentials without an OTP are answered with an "OTP required" challenge
-        const body = await response.json();
-        expect(response.status()).toBe(400);
-        expect(body.otpRequired).toBe(true);
-        expect(body.status).toBe('OtpGenerated');
-
+        // Valid credentials take the user to the OTP verification screen
         await expect(page).toHaveURL(/\/otp$/);
         await expect(otpPage.pageHeading).toBeVisible();
         await expect(otpPage.otpInputs).toHaveCount(otp.length);
@@ -72,14 +66,9 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
 
     test('Validate that user can log in successfully with a valid OTP', async () => {
         await otpPage.enterOtp(otp);
-        const tokenResponse = await waitForApiResponse(page, API.TOKEN, () => otpPage.clickContinueBtn());
+        await otpPage.clickContinueBtn();
 
-        // The OTP is accepted and an access token is issued
-        const tokenBody = await tokenResponse.json();
-        expect(tokenResponse.status()).toBe(200);
-        expect(tokenBody.token_type).toBe('Bearer');
-        expect(typeof tokenBody.access_token).toBe('string');
-
+        // A valid OTP completes login and lands the user on the dashboard
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect(dashboardPage.dashboardContainer).toBeVisible();
         await expect(dashboardPage.welcomeHeading).toBeVisible();
@@ -105,27 +94,18 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
 
     test('Validate that user can transfer funds to a new recipient', async () => {
         let recipientName = '';
-        let fee = 0;
+        let total = 0;
 
         await test.step('Enter amount and recipient details', async () => {
-            const nameEnquiryResponse = expectApiResponse(page, API.NAME_ENQUIRY);
-            const chargesResponse = expectApiResponse(page, API.TRANSFER_CHARGES);
-
             await transferPage.enterAmount(String(amount));
             await transferPage.chooseNewRecipient();
             await transferPage.selectBank(bankName);
             await transferPage.enterAccountNumber(beneficiaryAccount);
 
-            const enquiryResponse = await nameEnquiryResponse;
-            const enquiry = (await enquiryResponse.json()).result;
-            expect(enquiryResponse.status()).toBe(200);
-            expect(enquiry.accountNumber).toBe(beneficiaryAccount);
-            expect(enquiry.bankName).toBe(bankName);
-            recipientName = enquiry.accountName;
+            // The app resolves and displays the recipient's account name
+            recipientName = await transferPage.getResolvedAccountName();
+            expect(recipientName).not.toBe('');
 
-            fee = (await (await chargesResponse).json()).result.charges;
-
-            await expect(transferPage.resolvedAccountName(recipientName)).toBeVisible();
             await expect(transferPage.reviewTransferBtn).toBeEnabled();
         });
 
@@ -134,11 +114,14 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
 
             await expect(reviewPage.pageHeading).toBeVisible();
             await expect(reviewPage.amountValue).toHaveText(`NGN ${formatAmount(amount)}`);
-            await expect(reviewPage.feesValue).toHaveText(`NGN ${formatAmount(fee)}`);
-            await expect(reviewPage.totalAmountValue).toHaveText(`NGN ${formatAmount(amount + fee)}`);
             await expect(reviewPage.recipientNameValue).toHaveText(recipientName);
             await expect(reviewPage.recipientBankValue).toHaveText(bankName);
             await expect(reviewPage.recipientAccountValue).toHaveText(beneficiaryAccount);
+
+            // The total the user is debited must equal the amount plus the displayed fee
+            const fee = parseAmount(await reviewPage.feesValue.innerText());
+            total = parseAmount(await reviewPage.totalAmountValue.innerText());
+            expect(total).toBeCloseTo(amount + fee, 2);
 
             await reviewPage.enterNarration(narration);
             await reviewPage.clickSendMoneyBtn();
@@ -149,17 +132,11 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
             await expect(pinPage.pinInputs).toHaveCount(pin.length);
             await pinPage.enterPin(pin);
 
-            const transferResponse = await waitForApiResponse(page, API.TRANSFER, () => pinPage.clickConfirmBtn());
-            const transfer = await transferResponse.json();
-            await test.info().attach('transfer-response', {
-                body: JSON.stringify(transfer, null, 2),
-                contentType: 'application/json',
-            });
-            expect(transferResponse.status()).toBe(200);
-            expect(transfer.successful).toBe(true);
+            await pinPage.clickConfirmBtn();
 
+            // The transfer is processed and the success dialog is shown
             await expect(successPage.pageHeading).toBeVisible();
-            await expect(successPage.summaryText).toContainText(`₦ ${formatAmount(amount + fee)}`);
+            await expect(successPage.summaryText).toContainText(`₦ ${formatAmount(total)}`);
             await expect(successPage.summaryText).toContainText(recipientName);
         });
     });

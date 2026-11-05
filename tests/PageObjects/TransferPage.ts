@@ -44,8 +44,11 @@ export class TransferPage extends PageBase {
         return this.page.getByRole('option', { name: bankName, exact: true });
     }
 
-    resolvedAccountName(accountName: string): Locator {
-        return this.accountNameLabel.locator('..').getByText(accountName, { exact: true });
+    /** Reads the recipient account name the app resolves after the account number is entered. */
+    async getResolvedAccountName(): Promise<string> {
+        const value = this.accountNameLabel.locator('xpath=following-sibling::*[1]');
+        await value.filter({ hasText: /\S/ }).waitFor({ state: 'visible' });
+        return (await value.innerText()).trim();
     }
 
     async getFirstSourceAccountNumber(): Promise<string> {

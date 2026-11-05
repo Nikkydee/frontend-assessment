@@ -1,7 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { PageBase } from './PageBase';
 
-/** "Send money easily" modal: source account, amount and recipient details. */
 export class TransferPage extends PageBase {
 
     // Locators
@@ -44,7 +43,6 @@ export class TransferPage extends PageBase {
         return this.page.getByRole('option', { name: bankName, exact: true });
     }
 
-    /** Reads the recipient account name the app resolves after the account number is entered. */
     async getResolvedAccountName(): Promise<string> {
         const value = this.accountNameLabel.locator('xpath=following-sibling::*[1]');
         await value.filter({ hasText: /\S/ }).waitFor({ state: 'visible' });

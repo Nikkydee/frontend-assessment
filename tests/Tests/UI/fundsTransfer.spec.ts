@@ -8,11 +8,7 @@ import { TransactionPinPage } from '../../PageObjects/TransactionPinPage';
 import { TransferSuccessPage } from '../../PageObjects/TransferSuccessPage';
 import { formatAmount, parseAmount, getEnv } from '../../../Utils/helperMethods';
 
-/**
- * End-to-end flow: Login -> OTP -> Funds Transfer.
- * Tests run serially on one shared page because every login generates an OTP
- * and the app rate-limits OTP requests, so the flow logs in only once.
- */
+
 test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
     let page: Page;
     let loginPage: LoginPage;
@@ -22,8 +18,6 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
     let reviewPage: ReviewTransferPage;
     let pinPage: TransactionPinPage;
     let successPage: TransferSuccessPage;
-
-    // Read from the account list on the transfer page, so it works for any user
     let sourceAccountNumber: string;
 
     const email = getEnv('USER_EMAIL');
@@ -58,7 +52,6 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
         await loginPage.fillCredentials(email, password);
         await loginPage.clickSubmitBtn();
 
-        // Valid credentials take the user to the OTP verification screen
         await expect(page).toHaveURL(/\/otp$/);
         await expect(otpPage.pageHeading).toBeVisible();
         await expect(otpPage.otpInputs).toHaveCount(otp.length);
@@ -68,7 +61,6 @@ test.describe.serial('Login to Funds Transfer', { tag: '@sanity' }, () => {
         await otpPage.enterOtp(otp);
         await otpPage.clickContinueBtn();
 
-        // A valid OTP completes login and lands the user on the dashboard
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect(dashboardPage.dashboardContainer).toBeVisible();
         await expect(dashboardPage.welcomeHeading).toBeVisible();

@@ -1,7 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { PageBase } from './PageBase';
 
-/** "Transaction Successful" dialog shown after the transfer is processed. */
 export class TransferSuccessPage extends PageBase {
 
     // Locators

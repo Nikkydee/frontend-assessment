@@ -1,7 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { PageBase } from './PageBase';
 
-/** "Review Transactions" screen shown before the transfer is confirmed. */
 export class ReviewTransferPage extends PageBase {
 
     // Locators

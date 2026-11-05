@@ -1,7 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { PageBase } from './PageBase';
 
-/** "Enter your 78 PIN" dialog that authorises the transfer. */
 export class TransactionPinPage extends PageBase {
 
     // Locators
@@ -12,7 +11,6 @@ export class TransactionPinPage extends PageBase {
     constructor(page: Page) {
         super(page);
         this.pageHeading = page.getByRole('heading', { name: 'Enter your 78 PIN' });
-        // The app reuses its OTP component, so the PIN boxes carry the OTP labels
         this.pinInputs = page.getByLabel(/Please enter OTP character \d+/);
         this.confirmBtn = page.getByRole('button', { name: 'Confirm' });
     }

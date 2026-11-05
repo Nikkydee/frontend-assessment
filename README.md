@@ -120,11 +120,70 @@ than fixed sleeps.
    npx playwright show-report
    ```
 
-   Generate the Allure report (requires the Allure CLI):
+   For the Allure report, see [Allure reporting](#allure-reporting) below.
 
-   ```bash
-   npm run test:test-report   # run tests, then build the Allure report
-   ```
+## Allure reporting
+
+The Playwright HTML report (above) needs no extra setup. The **Allure** report
+is optional and has two one-time prerequisites: a Java runtime and the Allure
+command-line tool.
+
+### 1. Install Java (JRE 8+ / JDK 17 recommended)
+
+The Allure CLI runs on Java, so a JDK (or JRE) must be installed and on your
+system `PATH`.
+
+- **macOS (Homebrew):**
+
+  ```bash
+  brew install temurin
+  ```
+
+- **Windows:** install [Temurin](https://adoptium.net/) (or another JDK), then
+  add its `bin` folder to the `Path` environment variable (System Properties →
+  Environment Variables).
+
+- **Linux (Debian/Ubuntu):**
+
+  ```bash
+  sudo apt-get update && sudo apt-get install -y default-jre
+  ```
+
+Verify Java is on the `PATH`:
+
+```bash
+java -version
+```
+
+If this prints a version, Java is set up correctly. If it reports "command not
+found", the install folder's `bin` directory is not on your `PATH` yet.
+
+### 2. Install the Allure command-line tool
+
+Install it globally with npm (the version used in CI):
+
+```bash
+npm install -g allure-commandline@2.30.0
+```
+
+Alternatives: `brew install allure` (macOS), or
+[scoop](https://scoop.sh/)/manual download on Windows. Verify it resolves:
+
+```bash
+allure --version
+```
+
+### 3. Generate and view the report
+
+```bash
+npm test                 # produces ./allure-results
+npm run test:report      # builds a single-file report into ./reports
+# or do both in one step:
+npm run test:test-report
+```
+
+Open the generated `reports/index.html` in a browser. `allure-results/` and
+`reports/` are git-ignored.
 
 ## Important: OTP rate limiting
 
@@ -141,5 +200,30 @@ available.
 
 ## CI
 
-The suite is CI-ready. Provide the `.env` values as CI secrets (environment
-variables) so no credentials are stored in the repository.
+A GitHub Actions workflow lives at
+[`.github/workflows/playwright.yml`](.github/workflows/playwright.yml). It
+checks out the repo, installs dependencies and Playwright browsers, sets up Java
+and the Allure CLI, runs the suite, and uploads both the Allure and Playwright
+HTML reports as build artifacts.
+
+### Manual trigger only
+
+The workflow runs on **`workflow_dispatch`** (the "Run workflow" button on the
+Actions tab) and **not** on every push or pull request. Each run performs a real
+login — which generates an OTP, and the account is OTP rate-limited (see above)
+— and a real funds transfer, so it is run deliberately rather than on every
+commit.
+
+### Required secrets
+
+The credentials and test data are read from repository secrets, never stored in
+the repo. In GitHub: **Settings → Secrets and variables → Actions → New
+repository secret**, and add each of:
+
+`BASE_URL`, `USER_EMAIL`, `USER_PASSWORD`, `OTP_CODE`, `TRANSACTION_PIN`,
+`BENEFICIARY_BANK`, `BENEFICIARY_ACCOUNT`, `TRANSFER_AMOUNT`
+
+These map to the same variables listed in [`.env.example`](.env.example). The
+workflow exposes them as environment variables, which the tests read via
+`process.env` (see `Utils/helperMethods.ts` → `getEnv`), so no `.env` file is
+needed in CI.

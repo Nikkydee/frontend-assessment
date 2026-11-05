@@ -1,10 +1,11 @@
 name: Playwright Tests
 
-# Run manually only. Each run performs a real login (which generates an OTP,
-# and the account is OTP rate-limited) and a real funds transfer, so the suite
-# should not run automatically on every push or pull request.
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+      branches: [ main ]
 
 jobs:
   test:
